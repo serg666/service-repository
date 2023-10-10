@@ -317,14 +317,7 @@ func (ps *PGPoolProfileStore) Query(ctx interface{}, specification ProfileSpecif
 	var l []*Profile
 	var c int = 0
 
-	conn, err := ps.pool.Acquire(context.Background())
-
-	if err != nil {
-		return fmt.Errorf("failed to acquire connection from the pool: %v", err), c, l
-	}
-	defer conn.Release()
-
-	err = conn.QueryRow(
+	err := ps.pool.QueryRow(
 		context.Background(),
 		"select count(*) from profiles",
 	).Scan(&c)
@@ -333,7 +326,7 @@ func (ps *PGPoolProfileStore) Query(ctx interface{}, specification ProfileSpecif
 		return fmt.Errorf("failed to get profiles cnt: %v", err), c, l
 	}
 
-	rows, err := conn.Query(
+	rows, err := ps.pool.Query(
 		context.Background(), fmt.Sprintf(
 			`select
 				id,
@@ -367,14 +360,17 @@ func (ps *PGPoolProfileStore) Query(ctx interface{}, specification ProfileSpecif
 				Id: currencyId,
 			}
 		}
-		if err := ps.refreshProfileForeigns(ctx, &profile); err != nil {
-			return fmt.Errorf("Can not update profile foreigns: %v", err), c, l
-		}
 		l = append(l, &profile)
 	}
 
 	if err = rows.Err(); err != nil {
 		return fmt.Errorf("failed to iterating over rows of profiles: %v", err), c, l
+	}
+
+	for _, p := range l {
+		if err := ps.refreshProfileForeigns(ctx, p); err != nil {
+			return fmt.Errorf("Can not update profile foreigns: %v", err), c, l
+		}
 	}
 
 	return nil, c, l

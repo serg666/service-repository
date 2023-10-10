@@ -150,14 +150,7 @@ func (as *PGPoolAccountStore) Query(ctx interface{}, specification AccountSpecif
 	var l []*Account
 	var c int = 0
 
-	conn, err := as.pool.Acquire(context.Background())
-
-	if err != nil {
-		return fmt.Errorf("failed to acquire connection from the pool: %v", err), c, l
-	}
-	defer conn.Release()
-
-	err = conn.QueryRow(
+	err := as.pool.QueryRow(
 		context.Background(),
 		"select count(*) from accounts",
 	).Scan(&c)
@@ -166,7 +159,7 @@ func (as *PGPoolAccountStore) Query(ctx interface{}, specification AccountSpecif
 		return fmt.Errorf("failed to get accounts cnt: %v", err), c, l
 	}
 
-	rows, err := conn.Query(
+	rows, err := as.pool.Query(
 		context.Background(), fmt.Sprintf(
 			`select
 				id,
@@ -220,14 +213,17 @@ func (as *PGPoolAccountStore) Query(ctx interface{}, specification AccountSpecif
 				Id: currencyId,
 			}
 		}
-		if err := as.refreshAccountForeigns(ctx, &account); err != nil {
-			return fmt.Errorf("Can not update account foreigns: %v", err), c, l
-		}
 		l = append(l, &account)
 	}
 
 	if err = rows.Err(); err != nil {
 		return fmt.Errorf("failed to iterating over rows of accounts: %v", err), c, l
+	}
+
+	for _, a := range l {
+		if err := as.refreshAccountForeigns(ctx, a); err != nil {
+			return fmt.Errorf("Can not update account foreigns: %v", err), c, l
+		}
 	}
 
 	return nil, c, l

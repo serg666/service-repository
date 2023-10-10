@@ -259,14 +259,7 @@ func (rs *PGPoolRouteStore) Query(ctx interface{}, specification RouteSpecificat
 	var l []*Route
 	var c int = 0
 
-	conn, err := rs.pool.Acquire(context.Background())
-
-	if err != nil {
-		return fmt.Errorf("failed to acquire connection from the pool: %v", err), c, l
-	}
-	defer conn.Release()
-
-	err = conn.QueryRow(
+	err := rs.pool.QueryRow(
 		context.Background(),
 		"select count(*) from routes",
 	).Scan(&c)
@@ -275,7 +268,7 @@ func (rs *PGPoolRouteStore) Query(ctx interface{}, specification RouteSpecificat
 		return fmt.Errorf("failed to get routes cnt: %v", err), c, l
 	}
 
-	rows, err := conn.Query(
+	rows, err := rs.pool.Query(
 		context.Background(), fmt.Sprintf(
 			`select
 				id,
@@ -339,14 +332,17 @@ func (rs *PGPoolRouteStore) Query(ctx interface{}, specification RouteSpecificat
 				Id: routerId,
 			}
 		}
-		if err := rs.refreshRouteForeigns(ctx, &route); err != nil {
-			return fmt.Errorf("Can not update route foreigns: %v", err), c, l
-		}
 		l = append(l, &route)
 	}
 
 	if err = rows.Err(); err != nil {
 		return fmt.Errorf("failed to iterating over rows of routes: %v", err), c, l
+	}
+
+	for _, r := range l {
+		if err := rs.refreshRouteForeigns(ctx, r); err != nil {
+			return fmt.Errorf("Can not update route foreigns: %v", err), c, l
+		}
 	}
 
 	return nil, c, l

@@ -770,13 +770,6 @@ func (ts *PGPoolTransactionStore) Query(ctx interface{}, specification Transacti
 	var l []*Transaction
 	var c int = 0
 
-	conn, err := ts.pool.Acquire(context.Background())
-
-	if err != nil {
-		return fmt.Errorf("failed to acquire connection from the pool: %v", err), c, l
-	}
-	defer conn.Release()
-
 	countQuery := "select count(*) from transactions"
 
 	if strings.Contains(specification.ToSqlClauses(), "limit") {
@@ -785,7 +778,7 @@ func (ts *PGPoolTransactionStore) Query(ctx interface{}, specification Transacti
 		ts.logger(ctx).Print(countQuery)
 	}
 
-	err = conn.QueryRow(
+	err := ts.pool.QueryRow(
 		context.Background(),
 		countQuery,
 	).Scan(&c)
@@ -794,7 +787,7 @@ func (ts *PGPoolTransactionStore) Query(ctx interface{}, specification Transacti
 		return fmt.Errorf("failed to get transactions cnt: %v", err), c, l
 	}
 
-	rows, err := conn.Query(
+	rows, err := ts.pool.Query(
 		context.Background(), fmt.Sprintf(
 			`select
 				id,
@@ -916,14 +909,17 @@ func (ts *PGPoolTransactionStore) Query(ctx interface{}, specification Transacti
 				Id: referenceId,
 			}
 		}
-		if err := ts.refreshTransactionForeigns(ctx, &transaction); err != nil {
-			return fmt.Errorf("Can not update transaction foreigns: %v", err), c, l
-		}
 		l = append(l, &transaction)
 	}
 
 	if err = rows.Err(); err != nil {
 		return fmt.Errorf("failed to iterating over rows of transactions: %v", err), c, l
+	}
+
+	for _, t := range l {
+		if err := ts.refreshTransactionForeigns(ctx, t); err != nil {
+			return fmt.Errorf("Can not update transaction foreigns: %v", err), c, l
+		}
 	}
 
 	return nil, c, l
